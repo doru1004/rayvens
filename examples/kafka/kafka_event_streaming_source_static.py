@@ -19,7 +19,7 @@ import rayvens
 import sys
 
 # Event streaming from a third-party external source using Kafka and
-# dynamic subscribers.
+# static subscribers.
 
 # Command line arguments and validation:
 if len(sys.argv) < 2:
@@ -40,7 +40,7 @@ if run_mode not in ['local', 'mixed', 'operator']:
     raise RuntimeError(f'Invalid run mode provided: {run_mode}')
 
 # The Kafka topic used for communication.
-topic = "externalTopicSource"
+topic = "externalTopicSourceStatic"
 
 # Initialize ray either on the cluster or locally otherwise.
 if run_mode == 'operator':
@@ -51,8 +51,39 @@ else:
 # Start rayvens in operator mode."
 rayvens.init(mode=run_mode, transport="kafka")
 
+subscribers = [(lambda event: print('LOG:', event))]
+
+
+def test_function(event):
+    print('FUNCTION:', event)
+
+
+subscribers.append(test_function)
+
+
+@ray.remote
+def test_task(event):
+    print('RAY TASK:', event)
+
+
+subscribers.append(test_task)
+
+
+# Ray actor to handle events
+@ray.remote
+class TestActor:
+    def __init__(self, print_prefix):
+        self.print_prefix = print_prefix
+
+    def append(self, event):
+        print(self.print_prefix, event)
+
+
+test_actor = TestActor.remote("RAY ACTOR:")
+subscribers.append(test_actor)
+
 # Create stream.
-stream = rayvens.Stream('http')
+stream = rayvens.Stream('http', subscribers=subscribers)
 
 # Event source config.
 source_config = dict(
@@ -61,13 +92,34 @@ source_config = dict(
     route='/from-http',
     period=3000,
     kafka_transport_topic=topic,
-    kafka_transport_partitions=3)
+    kafka_transport_partitions=3,
+    kafka_transport_static_subscribers=True)
 
 # Attach source to stream.
 source = stream.add_source(source_config)
 
-# Log all events from stream-attached sources.
-stream >> (lambda event: print('LOG:', event))
+
+# Ray actor to handle events
+@ray.remote
+class AnotherTestActor:
+    def __init__(self, print_prefix):
+        self.print_prefix = print_prefix
+
+    def append(self, event):
+        print(self.print_prefix, event)
+
+
+# This actor will not be added to the list of subscribers because the
+# list of subscribers for this stream is static i.e. no other subscribers
+# can be added once the Stream is created.
+another_test_actor = AnotherTestActor.remote("ANOTHER RAY ACTOR:")
+stream >> another_test_actor
+
+# Only events with the following tags will be visible in the output:
+# - LOG
+# - FUNCTION
+# - RAY TASK
+# - RAY ACTOR
 
 # Disconnect source after 10 seconds.
 stream.disconnect_all(after=10)

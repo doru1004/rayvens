@@ -32,13 +32,14 @@ class Stream:
                  actor_options=None,
                  operator=None,
                  source_config=None,
-                 sink_config=None):
+                 sink_config=None,
+                 subscribers=[]):
         if _global_camel is None:
             raise RuntimeError(
                 "Rayvens has not been started. Start with 'rayvens.init()'.")
         self.name = name
         self.actor = StreamActor.options(actor_options).remote(
-            name, operator=operator)
+            name, operator=operator, subscribers=subscribers)
         if sink_config is not None:
             self.add_sink(sink_config)
         if source_config is not None:
@@ -107,9 +108,12 @@ class Stream:
 
 @ray.remote(num_cpus=0)
 class StreamActor:
-    def __init__(self, name, operator=None):
+    def __init__(self, name, operator=None, subscribers=[]):
         self.name = name
+        self._static_subscribers = len(subscribers) > 0
         self._subscribers = {}
+        for subscriber in subscribers:
+            self._subscribers[object()] = subscriber
         self._operator = operator
         self._sources = {}
         self._sinks = {}
@@ -117,6 +121,8 @@ class StreamActor:
         self._source_consumers = None
 
     def send_to(self, subscriber, name=None):
+        if self._static_subscribers:
+            return
         if name in self._subscribers:
             raise RuntimeError(
                 f'Stream {self.name} already has a subscriber named {name}.')
@@ -195,8 +201,14 @@ class StreamActor:
         return self._latest_sent_event_timestamp
 
     def _exchange_state(self, timestamp):
-        self._latest_sent_event_timestamp = timestamp
+        self._event_timestamp(timestamp)
+        return self._fetch_state()
+
+    def _fetch_state(self):
         return self._subscribers, self._sinks, self._operator
+
+    def _event_timestamp(self, timestamp):
+        self._latest_sent_event_timestamp = timestamp
 
 
 def _eval(f, data):

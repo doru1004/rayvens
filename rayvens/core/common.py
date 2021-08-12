@@ -151,8 +151,11 @@ class ProducerHelper:
 
 @ray.remote(num_cpus=0.05)
 class KafkaConsumer(object):
-    def __init__(self, kafka_transport_topic, stream_actor):
+    def __init__(self, kafka_transport_topic,
+                 kafka_transport_static_subscribers, stream_actor):
         # The subscribers to the stream:
+        self.kafka_transport_static_subscribers = \
+            kafka_transport_static_subscribers
         self.stream_actor = stream_actor
         self.subscribers = {}
         self.sinks = {}
@@ -170,6 +173,12 @@ class KafkaConsumer(object):
         self.kafka_consumer.subscribe([kafka_transport_topic])
 
     def enable_consumer(self):
+        # Fetch list of subscribers when static subscribers is enabled.
+        if self.kafka_transport_static_subscribers:
+            self.subscribers, self.sinks, self.operator = \
+                ray.get(self.stream_actor._fetch_state.remote())
+
+        # Start work loop.
         self.enabled = True
         while self.enabled:
             # Retrieve message:
@@ -189,8 +198,11 @@ class KafkaConsumer(object):
 
             # Fetch latest values for subscribvers, sinks and operator and
             # send the current time since a valid message has been received.
-            self.subscribers, self.sinks, self.operator = \
-                ray.get(self.stream_actor._exchange_state.remote(time.time()))
+            if not self.kafka_transport_static_subscribers:
+                self.subscribers, self.sinks, self.operator = ray.get(
+                    self.stream_actor._exchange_state.remote(time.time()))
+            else:
+                self.stream_actor._event_timestamp.remote(time.time())
 
             # Apply the operator:
             if self.operator is not None:
@@ -211,10 +223,12 @@ class KafkaConsumer(object):
         self.kafka_consumer.close()
 
 
-def kafka_send_to(kafka_transport_topic, kafka_transport_partitions, handle):
+def kafka_send_to(kafka_transport_topic, kafka_transport_partitions,
+                  kafka_transport_static_subscribers, handle):
     if kafka_transport_partitions > 1:
         consumers = [
-            KafkaConsumer.remote(kafka_transport_topic, handle)
+            KafkaConsumer.remote(kafka_transport_topic,
+                                 kafka_transport_static_subscribers, handle)
             for _ in range(kafka_transport_partitions)
         ]
 

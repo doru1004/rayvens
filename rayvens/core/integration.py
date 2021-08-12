@@ -53,6 +53,12 @@ class Integration:
             self.kafka_transport_partitions = config[
                 "kafka_transport_partitions"]
 
+        # Establish if only static subscribers are used:
+        self.kafka_transport_static_subscribers = False
+        if "kafka_transport_static_subscribers" in config:
+            self.kafka_transport_static_subscribers = config[
+                "kafka_transport_static_subscribers"]
+
         self.port = random_port()
         self.invocation = None
         self.service_name = None
