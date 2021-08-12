@@ -40,7 +40,7 @@ class Camel:
                       integration.kafka_transport_partitions,
                       integration.kafka_transport_static_subscribers,
                       stream.actor)
-        return integration
+        return integration, integration.kafka_transport_static_subscribers
 
     def add_sink(self, stream, config, sink_name):
         integration = Integration(stream.name, sink_name, config)

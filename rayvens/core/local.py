@@ -37,7 +37,7 @@ class Camel:
         integration.prepare_environment(self.mode)
         integration.invoke_local_run(self.mode, spec)
         send_to(stream.actor, self.mode.server_address(integration), route)
-        return integration
+        return integration, False
 
     def add_sink(self, stream, config, sink_name):
         integration = Integration(stream.name, sink_name, config)

@@ -76,7 +76,7 @@ class Camel:
 
         if not await_start(self.mode, integration):
             raise RuntimeError('Could not start source')
-        return integration
+        return integration, False
 
     def add_sink(self, stream, sink, sink_name):
         # Construct integration

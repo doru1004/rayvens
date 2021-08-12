@@ -32,14 +32,13 @@ class Stream:
                  actor_options=None,
                  operator=None,
                  source_config=None,
-                 sink_config=None,
-                 subscribers=[]):
+                 sink_config=None):
         if _global_camel is None:
             raise RuntimeError(
                 "Rayvens has not been started. Start with 'rayvens.init()'.")
         self.name = name
         self.actor = StreamActor.options(actor_options).remote(
-            name, operator=operator, subscribers=subscribers)
+            name, operator=operator)
         if sink_config is not None:
             self.add_sink(sink_config)
         if source_config is not None:
@@ -108,12 +107,10 @@ class Stream:
 
 @ray.remote(num_cpus=0)
 class StreamActor:
-    def __init__(self, name, operator=None, subscribers=[]):
+    def __init__(self, name, operator=None):
         self.name = name
-        self._static_subscribers = len(subscribers) > 0
+        self._static_subscribers = False
         self._subscribers = {}
-        for subscriber in subscribers:
-            self._subscribers[object()] = subscriber
         self._operator = operator
         self._sources = {}
         self._sinks = {}
@@ -153,8 +150,9 @@ class StreamActor:
             raise RuntimeError(
                 f'Stream {self.name} already has a source named {source_name}.'
             )
-        self._sources[source_name] = _global_camel.add_source(
-            stream, source_config, source_name)
+        self._sources[
+            source_name], self._static_subscribers = _global_camel.add_source(
+                stream, source_config, source_name)
         return source_name
 
     def add_sink(self, stream, sink_config):

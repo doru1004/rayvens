@@ -51,14 +51,16 @@ else:
 # Start rayvens in operator mode."
 rayvens.init(mode=run_mode, transport="kafka")
 
-subscribers = [(lambda event: print('LOG:', event))]
+stream = rayvens.Stream('http-to-kafka')
+
+stream >> (lambda event: print('LOG:', event))
 
 
 def test_function(event):
     print('FUNCTION:', event)
 
 
-subscribers.append(test_function)
+stream >> test_function
 
 
 @ray.remote
@@ -66,7 +68,7 @@ def test_task(event):
     print('RAY TASK:', event)
 
 
-subscribers.append(test_task)
+stream >> test_task
 
 
 # Ray actor to handle events
@@ -80,10 +82,7 @@ class TestActor:
 
 
 test_actor = TestActor.remote("RAY ACTOR:")
-subscribers.append(test_actor)
-
-# Create stream.
-stream = rayvens.Stream('http', subscribers=subscribers)
+stream >> test_actor
 
 # Event source config.
 source_config = dict(
